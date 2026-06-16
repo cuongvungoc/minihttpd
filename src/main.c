@@ -4,10 +4,14 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#include "util.h"
+
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define ADDR "127.0.0.1"
 #define MAX_CONNECTIONS 5
+#define CRLF "\r\n"
+#define DOUBLE_CRLF "\r\n\r\n"
 
 int main()
 {
@@ -19,8 +23,17 @@ int main()
     
     int opt = 1;
     int bytes_received = 0;
+    int total_bytes_received = 0;
     char buffer[BUFFER_SIZE] = {0};
-    char response[BUFFER_SIZE] = {0};
+    // char response[BUFFER_SIZE] = {0};
+
+    const char *http_response = 
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: 46\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "<html><body><h1>Hello HTTP</h1></body></html>";
 
     /* Create the TCP socket */
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -61,7 +74,7 @@ int main()
 
     printf("Server is listening on %s:%d\n", ADDR, PORT);
 
-    while (1)
+    while (TRUE)
     {
         /* Accept a new incoming connection */
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
@@ -74,24 +87,27 @@ int main()
         printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
         /* Handle the client connection */
-        while ((bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0)) > 0)
+        while (TRUE)
         {
-            buffer[bytes_received] = '\0';
-            printf("Received data: %s\n", buffer);
+            bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+            if (bytes_received < 0)
+            {
+                break;
+            }
+            total_bytes_received += bytes_received;
+            buffer[total_bytes_received] = '\0';
 
-            /* Response to client */
-            snprintf(response, sizeof(response), "Hello from server\n");
-            send(client_socket, response, strlen(response), 0);
+            /* Check for end of HTTP headers */
+            if (strstr(buffer, DOUBLE_CRLF) != NULL)
+            {
+                break;
+            }
         }
 
-        if (bytes_received == -1)
-        {
-            perror("recv");
-        }
-        else if (bytes_received == 0)
-        {
-            printf("Client disconnected.\n");
-        }
+        printf("Request: %s\n", buffer);
+
+        /* Response to client */
+        send(client_socket, http_response, strlen(http_response), 0);
 
         /* Close the client socket */
         close(client_socket);
