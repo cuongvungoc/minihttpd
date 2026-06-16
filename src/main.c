@@ -11,8 +11,7 @@
 #define BUFFER_SIZE 1024
 #define ADDR "127.0.0.1"
 #define MAX_CONNECTIONS 5
-#define CRLF "\r\n"
-#define DOUBLE_CRLF "\r\n\r\n"
+
 
 int main()
 {
@@ -27,17 +26,6 @@ int main()
     int total_bytes_received = 0;
     char buffer[BUFFER_SIZE] = {0};
 
-    char *http_request_line_str = NULL;
-    http_request_line_t http_request_line = {0};
-    // char response[BUFFER_SIZE] = {0};
-
-    const char *http_response = 
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: 46\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "<html><body><h1>Hello HTTP</h1></body></html>";
 
     /* Create the TCP socket */
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -110,28 +98,7 @@ int main()
 
         printf("Request: %s\n", buffer);
 
-        http_request_line_str = strtok(buffer, CRLF);
-        if (http_request_line_str == NULL)
-        {
-            printf("Failed to parse HTTP request line.\n");
-            continue;
-        }
-        printf("Request Line: %s\n", http_request_line_str);
-
-        if (parse_http_request_line(http_request_line_str, &http_request_line) == FALSE)
-        {
-            printf("Failed to parse HTTP request line.\n");
-            continue;
-        }
-
-
-        printf("Parsed Request Line:\n");
-        printf("Method: %s\n", http_request_line.method);
-        printf("Path: %s\n", http_request_line.path);
-        printf("Version: %s\n", http_request_line.version);
-
-        /* Response to client */
-        send(client_socket, http_response, strlen(http_response), 0);
+        handle_http_request(buffer, client_socket);
 
         /* Close the client socket */
         close(client_socket);

@@ -87,3 +87,27 @@ Method: GET
 Path: /
 Version: HTTP/1.1
 ```
+
+## Milestone 3: Static file server
+### Serve static files
+Map URL paths to files
+
+Example: 
+```
+URL:  /index.html
+Root: ./www
+File: ./www/index.html
+``` 
+
+Basic file serving flow
+```
+parse path
+convert URL path to filesystem path
+check if file exists
+check if regular file
+open file
+send HTTP headers
+send file body
+close file
+```
+

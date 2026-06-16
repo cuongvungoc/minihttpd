@@ -14,5 +14,6 @@ typedef struct http_request_line
 } http_request_line_t;
 
 int parse_http_request_line(const char *raw_request, http_request_line_t *request);
+int handle_http_request(char *raw_request, int client_socket);
 
 #endif // HTTP_PARSER_H
