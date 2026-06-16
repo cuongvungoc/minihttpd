@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 
 #include "util.h"
+#include "http_parser.h"
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
@@ -25,6 +26,9 @@ int main()
     int bytes_received = 0;
     int total_bytes_received = 0;
     char buffer[BUFFER_SIZE] = {0};
+
+    char *http_request_line_str = NULL;
+    http_request_line_t http_request_line = {0};
     // char response[BUFFER_SIZE] = {0};
 
     const char *http_response = 
@@ -105,6 +109,26 @@ int main()
         }
 
         printf("Request: %s\n", buffer);
+
+        http_request_line_str = strtok(buffer, CRLF);
+        if (http_request_line_str == NULL)
+        {
+            printf("Failed to parse HTTP request line.\n");
+            continue;
+        }
+        printf("Request Line: %s\n", http_request_line_str);
+
+        if (parse_http_request_line(http_request_line_str, &http_request_line) == FALSE)
+        {
+            printf("Failed to parse HTTP request line.\n");
+            continue;
+        }
+
+
+        printf("Parsed Request Line:\n");
+        printf("Method: %s\n", http_request_line.method);
+        printf("Path: %s\n", http_request_line.path);
+        printf("Version: %s\n", http_request_line.version);
 
         /* Response to client */
         send(client_socket, http_response, strlen(http_response), 0);
