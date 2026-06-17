@@ -11,6 +11,7 @@
 #include "util.h"
 #include "status.h"
 #include "http_response.h"
+#include "mime.h"
 
 #define ROOT_PATH "/"
 #define WEB_ROOT_DIR "./www"
@@ -77,6 +78,7 @@ int serve_static_file(int client_socket, const char *path)
     char relative_path[MAX_PATH_SIZE] = {0};
     off_t file_size = 0;
     file_verification_result_code_t file_verify_code = 0;
+    const char *mime_type = NULL;
 
     get_relative_path(path, relative_path, sizeof(relative_path));
     printf("Serving static file: %s\n", relative_path);
@@ -98,7 +100,10 @@ int serve_static_file(int client_socket, const char *path)
         return FALSE;
     }
 
+    mime_type = get_mime_type(relative_path);
+
     /* Send the file response */
-    send_file_response(client_socket, STATUS_OK, "text/html", relative_path, file_size);
+    send_file_response(client_socket, STATUS_OK, mime_type, relative_path, file_size);
+
     return TRUE;
 }

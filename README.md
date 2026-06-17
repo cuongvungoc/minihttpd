@@ -153,3 +153,24 @@ HTTP/1.1 400 Bad Request
 HTTP/1.1 403 Forbidden
 ...
 ```
+
+### MIME Detection
+**Goal**:
+Return correct `Content-Type`.
+
+Examples:
+```
+.html  -> text/html
+.css   -> text/css
+.js    -> application/javascript
+.json  -> application/json
+.png   -> image/png
+.jpg   -> image/jpeg
+.txt   -> text/plain
+```
+
+Test:
+```
+curl -I http://127.0.0.1:8080/index.html
+curl -I http://127.0.0.1:8080/style.css
+```
