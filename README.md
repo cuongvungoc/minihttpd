@@ -111,3 +111,45 @@ send file body
 close file
 ```
 
+### Add HTTP Error Response
+The server must not crash or return garbage when something fails.
+
+Implement these response:
+```
+400 Bad Request
+403 Forbidden
+404 Not Found
+405 Method Not Allowed
+414 URI Too Long
+500 Internal Server Error
+501 Not Implemented
+```
+
+Example response
+```
+HTTP/1.1 404 Not Found
+Content-Type: text/html
+Content-Length: 48
+Connection: close
+
+<html><body><h1>404 Not Found</h1></body></html>
+```
+
+Test
+```
+chmod 000 www/forbidden.html
+curl -v http://127.0.0.1:8080/notfound.html
+curl -v http://127.0.0.1:8080/longuri(length > 1024).html
+printf 'GET  HTTP/1.1\r\n\r\n' | nc 127.0.0.1 8080
+curl -v http://127.0.0.1:8080/forbidden.html
+...
+```
+
+Expected:
+```
+HTTP/1.1 404 Not Found
+HTTP/1.1 414 URI Too Long
+HTTP/1.1 400 Bad Request
+HTTP/1.1 403 Forbidden
+...
+```

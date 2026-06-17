@@ -3,6 +3,6 @@
 
 #include <sys/types.h>
 
-void serve_static_file(const char *path, int client_socket);
+int serve_static_file(int client_socket, const char *path);
 
 #endif /* STATIC_FILE_H */

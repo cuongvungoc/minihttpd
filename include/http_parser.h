@@ -1,5 +1,5 @@
-#ifndef HTTP_PARSER_H
-#define HTTP_PARSER_H
+#ifndef __HTTP_PARSER_H__
+#define __HTTP_PARSER_H__
 
 #define MAX_METHOD_SIZE 16
 #define MAX_PATH_SIZE 1024
