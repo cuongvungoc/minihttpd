@@ -81,8 +81,10 @@ Test:
 ```
 http://127.0.0.1:8080/
 ```
+
 Expected output:
-```
+
+```http
 Method: GET
 Path: /
 Version: HTTP/1.1
@@ -100,16 +102,14 @@ File: ./www/index.html
 ``` 
 
 Basic file serving flow
-```
-parse path
-convert URL path to filesystem path
-check if file exists
-check if regular file
-open file
-send HTTP headers
-send file body
-close file
-```
+- parse path
+- convert URL path to filesystem path
+- check if file exists
+- check if regular file
+- open file
+- send HTTP headers
+- send file body
+- close file
 
 ### Add HTTP Error Response
 The server must not crash or return garbage when something fails.
@@ -126,7 +126,7 @@ Implement these response:
 ```
 
 Example response
-```
+```http
 HTTP/1.1 404 Not Found
 Content-Type: text/html
 Content-Length: 48
@@ -136,7 +136,7 @@ Connection: close
 ```
 
 Test
-```
+```sh
 chmod 000 www/forbidden.html
 curl -v http://127.0.0.1:8080/notfound.html
 curl -v http://127.0.0.1:8080/longuri(length > 1024).html
@@ -146,7 +146,7 @@ curl -v http://127.0.0.1:8080/forbidden.html
 ```
 
 Expected:
-```
+```http
 HTTP/1.1 404 Not Found
 HTTP/1.1 414 URI Too Long
 HTTP/1.1 400 Bad Request
@@ -170,7 +170,66 @@ Examples:
 ```
 
 Test:
-```
+```sh
 curl -I http://127.0.0.1:8080/index.html
 curl -I http://127.0.0.1:8080/style.css
+```
+
+## Milestone 4: Secure Path Handling
+### Protect against path traversal
+Path traversal (also known as directory traversal) is a web security vulnerability that allows attackers to read arbitrary files and directories stored on a server. By manipulating file path parameters with sequences like "../", an attacker can "traverse" outside the intended directory to access sensitive data.
+
+Dangerous request:
+```http
+GET /../../../../etc/passwd HTTP/1.1
+```
+If the server naively does this:
+```c
+snprintf(full_path, sizeof(full_path), "%s%s", root, path);
+```
+Then attacker may access files outside the web root
+
+**Goal**: Implement path validation to avoid path traversal
+
+Rule:
+- reject paths containing `..`
+- reject absolute filesystem paths
+- reject encoded traversal like `%2e%2e`
+- normalize URL path
+- ensure resolved path stays inside document root
+
+Test:
+```sh
+# --path-as-is to bypass URL normally of curl follow RFC 3986
+curl --path-as-is http://127.0.0.1:8080/../../../../etc/passwd
+curl -v http://127.0.0.1:8080/%2e%2e/%2e%2e/etc/passwd
+```
+
+Expected:
+```
+403 Forbidden
+```
+
+### URL Decode
+HTTP URLs may contain encoded characters.
+
+Example:
+```
+%20 -> space
+%2F -> /
+%2e -> .
+```
+
+URL Decode example:
+```
+Input:  /hello%20world.html
+Output: /hello world.html
+```
+
+**NOTE**: URL-decode before checking for traversal.
+
+Test:
+```sh
+echo 'hello' > 'www/hello world.txt'
+curl http://127.0.0.1:8080/hello%20world.txt
 ```

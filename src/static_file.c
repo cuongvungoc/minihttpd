@@ -8,14 +8,11 @@
 #include <sys/sendfile.h>
 #include <errno.h>
 
-#include "util.h"
+#include "utils.h"
 #include "status.h"
 #include "http_response.h"
 #include "mime.h"
 
-#define ROOT_PATH "/"
-#define WEB_ROOT_DIR "./www"
-#define INDEX_FILE_PATH "/index.html"
 
 typedef enum
 {
@@ -26,19 +23,6 @@ typedef enum
 
 } file_verification_result_code_t;
 
-/* Get the relative path for the requested file */
-static void get_relative_path(const char *request_path, char *relative_path, size_t size)
-{
-    /* If the request path is the root, serve the index file */
-    if (strcmp(request_path, ROOT_PATH) == 0) {
-        request_path = INDEX_FILE_PATH;
-    }
-
-    if (snprintf(relative_path, size, "%s%s", WEB_ROOT_DIR, request_path) < 0) 
-    {
-        fprintf(stderr, "Failed to create relative path.\n");
-    }
-}
 
 /* Verify the requested file */
 static int verify_request_file(const char *path)
@@ -75,16 +59,16 @@ static off_t get_file_size(const char *path)
 /* Convert relative file path to absolute path */
 int serve_static_file(int client_socket, const char *path)
 {
-    char relative_path[MAX_PATH_SIZE] = {0};
+    // char relative_path[MAX_PATH_SIZE] = {0};
     off_t file_size = 0;
     file_verification_result_code_t file_verify_code = 0;
     const char *mime_type = NULL;
 
-    get_relative_path(path, relative_path, sizeof(relative_path));
-    printf("Serving static file: %s\n", relative_path);
+    // get_relative_path(path, relative_path, sizeof(relative_path));
+    printf("Serving static file: %s\n", path);
 
     /* Verify the requested file */
-    file_verify_code = verify_request_file(relative_path);
+    file_verify_code = verify_request_file(path);
     if (file_verify_code != FILE_OK)
     {
         send_error_response(client_socket, file_verify_code);
@@ -92,7 +76,7 @@ int serve_static_file(int client_socket, const char *path)
         return FALSE;
     }
 
-    file_size = get_file_size(relative_path);
+    file_size = get_file_size(path);
     if (file_size < 0)
     {
         /* Send 500 Internal Server Error */
@@ -100,10 +84,10 @@ int serve_static_file(int client_socket, const char *path)
         return FALSE;
     }
 
-    mime_type = get_mime_type(relative_path);
+    mime_type = get_mime_type(path);
 
     /* Send the file response */
-    send_file_response(client_socket, STATUS_OK, mime_type, relative_path, file_size);
+    send_file_response(client_socket, STATUS_OK, mime_type, path, file_size);
 
     return TRUE;
 }

@@ -3,7 +3,8 @@
 #include <arpa/inet.h>
 #include <sys/sendfile.h>
 #include "http_response.h"
-#include "util.h"
+#include "utils.h"
+
 
 /* Send an exact number of bytes over a socket */
 static int socket_send_exact(int client_socket, const void *buf, size_t len)
@@ -32,6 +33,7 @@ static int socket_send_exact(int client_socket, const void *buf, size_t len)
     return TRUE;
 }
 
+
 /* Get the reason phrase for a given status code */
 static const char *get_reason_phrase(status_code_t status_code)
 {
@@ -57,11 +59,12 @@ static const char *get_reason_phrase(status_code_t status_code)
     return "Unknown Status";
 }
 
+
 /* Send an error response */
 int send_error_response(int client_socket, int status_code)
 {
-    char header[256];
-    int header_len;
+    char header[256] = {0};
+    int header_len = 0;
     const char *status_text = get_reason_phrase(status_code);
 
     header_len = snprintf(header, sizeof(header),
@@ -91,7 +94,6 @@ int send_file_response(int client_socket, int status_code, const char *content_t
     off_t offset = 0;
     ssize_t sent = 0;
     const char *status_text = get_reason_phrase(status_code);
-
 
     file = fopen(relative_path, "rb");
     if (file == NULL)
