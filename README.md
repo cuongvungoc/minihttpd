@@ -233,3 +233,55 @@ Test:
 echo 'hello' > 'www/hello world.txt'
 curl http://127.0.0.1:8080/hello%20world.txt
 ```
+
+## Milestone 5: Better HTTP Parsing
+### Parse HTTP headers
+**Goal**: Convert the header to the structured data.
+
+Example request:
+```http
+GET / HTTP/1.1
+Host: localhost
+User-Agent: curl/8.0
+Connection: keep-alive
+Accept: */*
+```
+
+Shoud parse:
+```
+Host = localhost
+User-Agent = curl/8.0
+Connection = keep-alive
+```
+
+Extend HTTP request struct
+```
+typedef struct {
+    char method[16];
+    char path[1024];
+    char version[16];
+
+    char host[256];
+    char connection[64];
+    char content_type[128];
+
+    size_t content_length;
+} http_request_t;
+```
+
+Requirements:
+```
+parse request line
+parse headers
+detect end of headers: \r\n\r\n
+extract Content-Length
+extract Connection
+extract Host
+```
+
+Test:
+```sh
+curl -v -H "Connection: keep-alive" http://127.0.0.1:8080/
+```
+
+### Add HEAD Method

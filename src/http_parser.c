@@ -19,50 +19,12 @@ typedef enum
 
 } http_parse_result_t;
 
-
-/* Parse the HTTP request line
- * Returns HTTP_PARSE_OK on success, or a corresponding error code on failure.
- */
-int parse_http_request_line(const char *http_request_line_str, http_request_line_t *request)
+const char * const http_versions[] =
 {
-    char *delimiters = " ";
-    char *save_context = NULL;
-    char *token = NULL;
-
-    /* Parse the HTTP method */
-    token = strtok_r((char *)http_request_line_str, delimiters, &save_context);
-    if (token == NULL) {
-        fprintf(stderr, "Failed to parse HTTP method.\n");
-        return HTTP_PARSE_BAD_REQUEST;
-    }
-    strncpy(request->method, token, MAX_METHOD_SIZE - 1);
-    request->method[MAX_METHOD_SIZE - 1] = '\0';
-
-    /* Parse the HTTP path */
-    token = strtok_r(NULL, delimiters, &save_context);
-    if (token == NULL) {
-        fprintf(stderr, "Failed to parse HTTP path.\n");
-        return HTTP_PARSE_BAD_REQUEST;
-    }
-    if (strlen(token) >= MAX_PATH_SIZE) {
-        fprintf(stderr, "HTTP path is too long.\n");
-        return HTTP_PARSE_URI_TOO_LONG;
-    }
-    strncpy(request->path, token, MAX_PATH_SIZE - 1);
-    request->path[MAX_PATH_SIZE - 1] = '\0';
-
-    /* Parse the HTTP version */
-    token = strtok_r(NULL, delimiters, &save_context);
-    if (token == NULL) {
-        fprintf(stderr, "Failed to parse HTTP version.\n");
-        return HTTP_PARSE_BAD_REQUEST;
-    }
-    strncpy(request->version, token, MAX_VERSION_SIZE - 1);
-    request->version[MAX_VERSION_SIZE - 1] = '\0';
-
-
-    return HTTP_PARSE_OK;
-}
+    [HTTP_VER_0_9] = "HTTP/0.9",
+    [HTTP_VER_1_0] = "HTTP/1.0",
+    [HTTP_VER_1_1] = "HTTP/1.1",
+};
 
 
 /* URL decode a percent-encoded string */
@@ -114,7 +76,7 @@ static int url_decode(const char *src, char *dst, size_t dst_size)
 
     dst[j] = '\0';
 
-    printf("src: %s, dest: %s", src, dst);
+    printf("src: %s, dest: %s\n", src, dst);
 
     return TRUE;
 }
@@ -201,36 +163,167 @@ static void get_relative_path(const char *request_path, char *relative_path, siz
 }
 
 
+/* Parse the HTTP request line
+ * Returns HTTP_PARSE_OK on success, or a corresponding error code on failure.
+ */
+static int parse_http_request_line(const char *request, http_request_t *req)
+{
+    int i = 0;
+    char ver_support = FALSE;
+
+    if (sscanf(request, "%15s %1023s %15s", req->method, req->path, req->version) != HTTP_REQUEST_LINE_NUM)
+    {
+        return HTTP_PARSE_BAD_REQUEST;
+    }
+
+    for (i = 0; i < HTTP_VER_NUM; i++)
+    {
+        if (strcmp(req->version, http_versions[i]) == 0)
+        {
+            ver_support = TRUE;
+            break;
+        }
+    }
+
+    if (ver_support == FALSE)
+    {
+        return HTTP_PARSE_VERSION_NOT_SUPPORTED;
+    }
+
+    return HTTP_PARSE_OK;
+}
+
+
+/* Parse HTTP request
+ *
+ * - Parse HTTP request line (Method, Path, Version)
+ * - Parse other HTTP header (Host, Connection, Content-Type, Content-Length) 
+ *
+ * Return:
+ * - HTTP_PARSE_OK if success
+ * - Other Error code corresponding HTTP code if failure
+ */
+static int parse_http_request(const char *request, http_request_t *req)
+{
+    char *line_start = NULL;
+    char *line_end = NULL;
+    char *colon = NULL;
+    char buffer[MAX_HTTP_HEADER_SIZE] = {0};
+    char *header_name = NULL;
+    char *header_value = NULL;
+
+    http_parse_result_t line_request_parse_result = HTTP_PARSE_OK;
+
+    printf("parse_http_request : %s", request);
+
+    if (!request || !req)
+        return HTTP_PARSE_BAD_REQUEST;
+
+    if (strlen(request) >= sizeof(buffer))
+        return HTTP_PARSE_BAD_REQUEST;
+
+    strncpy(buffer, request, sizeof(buffer) - 1);
+
+
+    /* Parse request line*/
+    line_request_parse_result = parse_http_request_line(buffer, req);
+    if (line_request_parse_result != HTTP_PARSE_OK)
+        return line_request_parse_result;
+
+
+    line_end = strstr(request, "\r\n");
+    if (!line_end)
+        return HTTP_PARSE_BAD_REQUEST;
+
+    *line_end = '\0';
+    line_start = line_end + HTTP_CRLF_LEN;
+
+    while (*line_start)
+    {
+        line_end = strstr(line_start, "\r\n");
+        if (!line_end)
+            return HTTP_PARSE_BAD_REQUEST;
+
+
+        /* Empty line -> End of header */
+        if (line_end == line_start)
+            break;
+
+        *line_end = '\0';
+
+        colon = strchr(line_start, ':');
+
+        if (!colon)
+            return HTTP_PARSE_BAD_REQUEST;
+
+        *colon = '\0';
+
+        header_name  = line_start;
+        header_value = colon + 1;
+
+        while (*header_value == SPACE_CHAR)
+            header_value++;
+
+        if (strcasecmp(header_name, "Host") == 0)
+        {
+            strncpy(req->host, header_value, sizeof(req->host) - 1);
+        }
+        else if (strcasecmp(header_name, "Connection") == 0)
+        {
+            strncpy(req->connection, header_value, sizeof(req->connection) - 1);
+        }
+        else if (strcasecmp(header_name, "Content-Type") == 0)
+        {
+            strncpy(req->content_type, header_value, sizeof(req->content_type) - 1);
+        }
+        else if (strcasecmp(header_name, "Content-Length") == 0)
+        {
+            req->content_length = (size_t)strtoull(header_value, NULL, 10);
+        }
+
+        line_start = line_end + HTTP_CRLF_LEN;
+
+    }
+
+    return HTTP_PARSE_OK;
+}
+
+
+static void dump_http_header(http_request_t *req)
+{
+    printf("Method: %s\n", req->method);
+    printf("Path: %s\n", req->path);
+    printf("Version: %s\n", req->version);
+    printf("Host: %s\n", req->host);
+    printf("Connnection: %s\n", req->connection);
+    printf("Content Type: %s\n", req->content_type);
+}
+
+
 /* Handle the HTTP request */
 int handle_http_request(char *raw_request, int client_socket)
 {
-    http_request_line_t http_request_line = {0};
+    http_request_t http_request = {0};
     http_parse_result_t parse_result = {0};
-    char *http_request_line_str = NULL;
     char relative_path[MAX_PATH_SIZE] = {0};
 
-    /* Parse the HTTP request line */
-    http_request_line_str = strtok(raw_request, CRLF);
-    if (http_request_line_str == NULL)
+    parse_result = parse_http_request(raw_request, &http_request);
+    if (parse_result != HTTP_PARSE_OK)
     {
-        printf("Failed to parse HTTP request line.\n");
-        return FALSE;
-    }
-
-    parse_result = parse_http_request_line(http_request_line_str, &http_request_line);
-    if (parse_result != HTTP_PARSE_OK) {
         send_error_response(client_socket, parse_result);
         return FALSE;
     }
 
+    dump_http_header(&http_request);
+
     /* URL decode the requested path */
-    if (url_decode(http_request_line.path, http_request_line.path, sizeof(http_request_line.path)) == FALSE)
+    if (url_decode(http_request.path, http_request.path, sizeof(http_request.path)) == FALSE)
     {
         send_error_response(client_socket, HTTP_PARSE_BAD_REQUEST);
         return FALSE;
     }
 
-    get_relative_path(http_request_line.path, relative_path, sizeof(relative_path));
+    get_relative_path(http_request.path, relative_path, sizeof(relative_path));
 
     /* Validate the requested path */
     if (validate_path(relative_path) == FALSE)
