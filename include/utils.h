@@ -1,6 +1,8 @@
 #ifndef __UTIL_H__
 #define __UTIL_H__
 
+#include <string.h>
+
 #define TRUE 1
 #define FALSE 0
 
@@ -15,6 +17,19 @@
 #define INDEX_FILE_PATH "/index.html"
 
 #define SPACE_CHAR ' '
+
+#define SAFE_STRNCPY(dst, src, size)       \
+    do                                     \
+    {                                      \
+        if ((size) > 0)                    \
+        {                                  \
+            strncpy((dst), (src), (size) - 1); \
+            (dst)[(size) - 1] = '\0';      \
+        }                                  \
+    } while (0)
+
+
+#define SAFE_FREE(ptr) do { free(ptr); (ptr) = NULL; } while(0)
 
 int hex_to_int(char c);
 

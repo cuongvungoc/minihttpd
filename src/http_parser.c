@@ -9,6 +9,18 @@
 
 #define DOUBLE_DOT ".."
 #define DOUBLE_DOT_ENCODED "%2e%2e"
+#define URL_PERCENT_CHAR '%'
+#define URL_PLUS_CHAR '+'
+#define URL_SPACE_CHAR ' '
+#define URL_HEX_HIGH_OFFSET 1
+#define URL_HEX_LOW_OFFSET 2
+#define URL_ENCODED_CHAR_LEN 3
+#define HEX_BITS_PER_DIGIT 4
+#define HTTP_HEADER_SEPARATOR ':'
+#define HTTP_HEADER_HOST "Host"
+#define HTTP_HEADER_CONNECTION "Connection"
+#define HTTP_HEADER_CONTENT_TYPE "Content-Type"
+#define HTTP_HEADER_CONTENT_LENGTH "Content-Length"
 typedef enum
 {
     HTTP_PARSE_OK = 0,
@@ -30,51 +42,52 @@ const char * const http_versions[] =
 /* URL decode a percent-encoded string */
 static int url_decode(const char *src, char *dst, size_t dst_size)
 {
-    size_t i = 0;
-    size_t j = 0;
+    size_t src_idx = 0;
+    size_t dst_idx = 0;
     int high = 0;
     int low = 0;
 
     if (!src || !dst || dst_size == 0)
         return FALSE;
 
-    while (src[i] != '\0')
+    while (src[src_idx] != '\0')
     {
-        if (j >= dst_size - 1)
+        if (dst_idx >= dst_size - 1)
         {
             return FALSE;
         }
 
-        if (src[i] == '%')
+        if (src[src_idx] == URL_PERCENT_CHAR)
         {
-            if (src[i + 1] == '\0' || src[i + 2] == '\0')
+            if (src[src_idx + URL_HEX_HIGH_OFFSET] == '\0' ||
+                src[src_idx + URL_HEX_LOW_OFFSET] == '\0')
             {
                 return FALSE;
             }
 
-            high = hex_to_int(src[i + 1]);
-            low  = hex_to_int(src[i + 2]);
+            high = hex_to_int(src[src_idx + URL_HEX_HIGH_OFFSET]);
+            low  = hex_to_int(src[src_idx + URL_HEX_LOW_OFFSET]);
 
             if (high < 0 || low < 0)
             {
                 return FALSE;
             }
 
-            dst[j++] = (char)((high << 4) | low);
-            i += 3;
+            dst[dst_idx++] = (char)((high << HEX_BITS_PER_DIGIT) | low);
+            src_idx += URL_ENCODED_CHAR_LEN;
         }
-        else if (src[i] == '+')
+        else if (src[src_idx] == URL_PLUS_CHAR)
         {
-            dst[j++] = ' ';
-            i++;
+            dst[dst_idx++] = URL_SPACE_CHAR;
+            src_idx++;
         }
         else
         {
-            dst[j++] = src[i++];
+            dst[dst_idx++] = src[src_idx++];
         }
     }
 
-    dst[j] = '\0';
+    dst[dst_idx] = '\0';
 
     printf("src: %s, dest: %s\n", src, dst);
 
@@ -102,7 +115,7 @@ static int is_path_inside_web_root_dir(const char *web_root_dir, const char *abs
         return FALSE;
     }
 
-    free(absolute_root_path);
+    SAFE_FREE(absolute_root_path);
     return TRUE;
 }
 
@@ -131,7 +144,7 @@ static int validate_path(const char *path)
     if (strcmp(absolute_path, path) == 0)
     {
         fprintf(stderr, "Path traversal attempt detected - reject absolute paths: %s\n", path);
-        free(absolute_path);
+        SAFE_FREE(absolute_path);
         return FALSE;
     }
 
@@ -139,11 +152,11 @@ static int validate_path(const char *path)
     if (is_path_inside_web_root_dir(WEB_ROOT_DIR, absolute_path) == FALSE)
     {
         fprintf(stderr, "Path traversal attempt detected - path not inside root: %s\n", path);
-        free(absolute_path);
+        SAFE_FREE(absolute_path);
         return FALSE;
     }
 
-    free(absolute_path);
+    SAFE_FREE(absolute_path);
     return TRUE;
 }
 
@@ -193,6 +206,48 @@ static int parse_http_request_line(const char *request, http_request_t *req)
     return HTTP_PARSE_OK;
 }
 
+static int parse_http_header_line(char *line, http_request_t *req)
+{
+    char *separator = NULL;
+    char *header_name = NULL;
+    char *header_value = NULL;
+
+    separator = strchr(line, HTTP_HEADER_SEPARATOR);
+    if (!separator)
+    {
+        return HTTP_PARSE_BAD_REQUEST;
+    }
+
+    *separator = '\0';
+
+    header_name = line;
+    header_value = separator + 1;
+
+    while (*header_value == SPACE_CHAR)
+    {
+        header_value++;
+    }
+
+    if (strcasecmp(header_name, HTTP_HEADER_HOST) == 0)
+    {
+        SAFE_STRNCPY(req->host, header_value, sizeof(req->host));
+    }
+    else if (strcasecmp(header_name, HTTP_HEADER_CONNECTION) == 0)
+    {
+        SAFE_STRNCPY(req->connection, header_value, sizeof(req->connection));
+    }
+    else if (strcasecmp(header_name, HTTP_HEADER_CONTENT_TYPE) == 0)
+    {
+        SAFE_STRNCPY(req->content_type, header_value, sizeof(req->content_type));
+    }
+    else if (strcasecmp(header_name, HTTP_HEADER_CONTENT_LENGTH) == 0)
+    {
+        req->content_length = (size_t)strtoull(header_value, NULL, 10);
+    }
+
+    return HTTP_PARSE_OK;
+}
+
 
 /* Parse HTTP request
  *
@@ -207,12 +262,8 @@ static int parse_http_request(const char *request, http_request_t *req)
 {
     char *line_start = NULL;
     char *line_end = NULL;
-    char *colon = NULL;
     char buffer[MAX_HTTP_HEADER_SIZE] = {0};
-    char *header_name = NULL;
-    char *header_value = NULL;
-
-    http_parse_result_t line_request_parse_result = HTTP_PARSE_OK;
+    http_parse_result_t parse_result = HTTP_PARSE_OK;
 
     printf("parse_http_request : %s", request);
 
@@ -222,16 +273,15 @@ static int parse_http_request(const char *request, http_request_t *req)
     if (strlen(request) >= sizeof(buffer))
         return HTTP_PARSE_BAD_REQUEST;
 
-    strncpy(buffer, request, sizeof(buffer) - 1);
-
+    SAFE_STRNCPY(buffer, request, sizeof(buffer));
 
     /* Parse request line*/
-    line_request_parse_result = parse_http_request_line(buffer, req);
-    if (line_request_parse_result != HTTP_PARSE_OK)
-        return line_request_parse_result;
+    parse_result = parse_http_request_line(buffer, req);
+    if (parse_result != HTTP_PARSE_OK)
+        return parse_result;
 
 
-    line_end = strstr(request, "\r\n");
+    line_end = strstr(buffer, CRLF);
     if (!line_end)
         return HTTP_PARSE_BAD_REQUEST;
 
@@ -240,7 +290,7 @@ static int parse_http_request(const char *request, http_request_t *req)
 
     while (*line_start)
     {
-        line_end = strstr(line_start, "\r\n");
+        line_end = strstr(line_start, CRLF);
         if (!line_end)
             return HTTP_PARSE_BAD_REQUEST;
 
@@ -251,35 +301,9 @@ static int parse_http_request(const char *request, http_request_t *req)
 
         *line_end = '\0';
 
-        colon = strchr(line_start, ':');
-
-        if (!colon)
-            return HTTP_PARSE_BAD_REQUEST;
-
-        *colon = '\0';
-
-        header_name  = line_start;
-        header_value = colon + 1;
-
-        while (*header_value == SPACE_CHAR)
-            header_value++;
-
-        if (strcasecmp(header_name, "Host") == 0)
-        {
-            strncpy(req->host, header_value, sizeof(req->host) - 1);
-        }
-        else if (strcasecmp(header_name, "Connection") == 0)
-        {
-            strncpy(req->connection, header_value, sizeof(req->connection) - 1);
-        }
-        else if (strcasecmp(header_name, "Content-Type") == 0)
-        {
-            strncpy(req->content_type, header_value, sizeof(req->content_type) - 1);
-        }
-        else if (strcasecmp(header_name, "Content-Length") == 0)
-        {
-            req->content_length = (size_t)strtoull(header_value, NULL, 10);
-        }
+        parse_result = parse_http_header_line(line_start, req);
+        if (parse_result != HTTP_PARSE_OK)
+            return parse_result;
 
         line_start = line_end + HTTP_CRLF_LEN;
 
